@@ -2,9 +2,11 @@ from fastapi import FastAPI, Depends,HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from backend import models, database
+from backend.routes.face_routes import router as face_router
 from pydantic import BaseModel      # For request validation
-from datetime import date           # To set the session date
-
+from datetime import date  
+import os         # To set the session date
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 class TeacherLoginRequest(BaseModel):
     teacher_id: int
     course_name: str
@@ -20,6 +22,7 @@ class StudentCreateRequest(BaseModel):
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="Face Recognition Attendance System")
+app.include_router(face_router)
 
 @app.get("/")
 def root():

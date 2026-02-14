@@ -1,7 +1,21 @@
-from sqlalchemy import Column, Integer, String,LargeBinary, DateTime, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String,LargeBinary, DateTime, Boolean, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy.dialects.postgresql import ARRAY, FLOAT
 from datetime import datetime
 from .database import Base
 
+class Person(Base):
+    __tablename__ = "persons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    embedding = Column(ARRAY(FLOAT))
+
+class UserFaces(Base):
+    __tablename__ = "user_faces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, unique=True, index=True)
+    embedding = Column(JSON)  # stores the face embedding as a list
 class Teacher(Base):
     __tablename__ = "teachers"
     id = Column(Integer, primary_key=True, index=True)
