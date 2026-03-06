@@ -23,11 +23,10 @@ async def register_face(
     # Generate embedding with Facenet explicitly
     embedding = DeepFace.represent(img_path=file_path, model_name="Facenet")[0]["embedding"]
 
-# Convert to list so it can be stored safely in DB
+# Convert to list so it can be stored safely in db
     new_person = Person(name=name, embedding=list(embedding))
     db.add(new_person)
     db.commit()
-
     return {"message": "Face registered successfully"}
 
 
@@ -52,7 +51,6 @@ async def identify_face(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating embedding: {str(e)}")
     finally:
-        # Clean up temp file
         os.remove(temp_path)
 
     # Fetch all registered users from Person table
@@ -66,8 +64,7 @@ async def identify_face(
     for user in users:
         registered_embedding = np.array(user.embedding, dtype=np.float32)
         similarity = np.dot(registered_embedding, uploaded_embedding) / (
-            np.linalg.norm(registered_embedding) * np.linalg.norm(uploaded_embedding)
-        )
+            np.linalg.norm(registered_embedding) * np.linalg.norm(uploaded_embedding))
             
         if similarity > highest_similarity:
             highest_similarity = similarity
@@ -77,7 +74,7 @@ async def identify_face(
     match = highest_similarity > 0.7
 
     return {
-        "matched_user_id": best_match.id,  # or user.user_id if you have that field
+        "matched_user_id": best_match.id,  
         "matched_user_name": best_match.name,
         "match": bool(match),
         "similarity": float(highest_similarity)

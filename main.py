@@ -7,6 +7,7 @@ from pydantic import BaseModel      # For request validation
 from datetime import date  
 import os         # To set the session date
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 class TeacherLoginRequest(BaseModel):
     teacher_id: int
     course_name: str
@@ -75,7 +76,7 @@ def teacher_login(request: TeacherLoginRequest, db: Session = Depends(database.g
         models.Teacher.id == request.teacher_id
     ).first()
     if not teacher:
-         raise HTTPException(status_code=404, detail="Teacher not found")
+        raise HTTPException(status_code=404, detail="Teacher not found")
 
      # 2️⃣ Check if teacher already has an active session
     existing_session = db.query(models.Session).filter(
