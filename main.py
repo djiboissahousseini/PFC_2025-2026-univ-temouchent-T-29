@@ -1,3 +1,7 @@
+import os   
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 from fastapi import FastAPI, Depends,HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -5,8 +9,8 @@ from backend import models, database
 from backend.routes.face_routes import router as face_router
 from pydantic import BaseModel      # For request validation
 from datetime import date  
-import os         # To set the session date
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+from deepface import DeepFace
+from fastapi.middleware.cors import CORSMiddleware
 
 class TeacherLoginRequest(BaseModel):
     teacher_id: int
@@ -25,7 +29,20 @@ models.Base.metadata.create_all(bind=database.engine)
 app = FastAPI(title="Face Recognition Attendance System")
 app.include_router(face_router)
 
-@app.get("/")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.on_event("startup")
+def load_models():
+    print("⏳ Loading DeepFace models...")
+    DeepFace.build_model("Facenet")
+    print("✅ Models loaded and ready!")
+    
+@app.get("/api")
 def root():
     return {"message": "FastAPI + PostgreSQL is working!"}
 
@@ -194,4 +211,5 @@ def reset_sessions(db: Session = Depends(database.get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     
-
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
