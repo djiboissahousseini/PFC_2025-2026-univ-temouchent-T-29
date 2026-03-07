@@ -20,15 +20,18 @@ async def register_face(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Generate embedding with Facenet explicitly
-    embedding = DeepFace.represent(img_path=file_path, model_name="Facenet")[0]["embedding"]
+    try:
+        embedding = DeepFace.represent(img_path=file_path, model_name="Facenet")[0]["embedding"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Face detection failed: {str(e)}")
+    finally:
+        os.remove(file_path)  # ← always deletes, even if DeepFace crashes
 
-# Convert to list so it can be stored safely in db
     new_person = Person(name=name, embedding=list(embedding))
     db.add(new_person)
     db.commit()
-    return {"message": "Face registered successfully"}
 
+    return {"message": f"✅ Face registered successfully for {name}"}
 
 @router.post("/identify")
 async def identify_face(
