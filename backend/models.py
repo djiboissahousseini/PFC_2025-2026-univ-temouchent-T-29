@@ -2,25 +2,12 @@ from sqlalchemy import Column, Integer, String,LargeBinary, DateTime, Boolean, F
 from sqlalchemy.dialects.postgresql import ARRAY, FLOAT
 from datetime import datetime, timezone
 from .database import Base
-
-class Person(Base):
-    __tablename__ = "persons"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    embedding = Column(ARRAY(FLOAT))
-
-class UserFaces(Base):
-    __tablename__ = "user_faces"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, unique=True, index=True)
-    embedding = Column(JSON)  # stores the face embedding as a list
 class Teacher(Base):
     __tablename__ = "teachers"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(100), unique=True, nullable=False)
-    face_embedding = Column(LargeBinary)
+    face_embedding = Column(ARRAY(FLOAT))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class Student(Base):
@@ -28,7 +15,7 @@ class Student(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     matricule = Column(String(20), unique=True, nullable=False)
-    face_embedding = Column(LargeBinary)
+    face_embedding = Column(ARRAY(FLOAT))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class Session(Base):
