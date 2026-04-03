@@ -51,3 +51,18 @@ def student_checkin(request: AttendanceRequest, db: Session = Depends(database.g
         "student": student.name,
         "session_id": session.id
     }
+
+@router.get("/active-session")
+def get_active_session(classroom: str, db: Session = Depends(database.get_db)):
+    session = db.query(models.Session).filter(
+        models.Session.classroom == classroom,
+        models.Session.is_active == True
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="No active session")
+    return {
+        "session_id": session.id,
+        "course_name": session.course_name,
+        "group_name": session.group_name,
+        "classroom": session.classroom,
+    }

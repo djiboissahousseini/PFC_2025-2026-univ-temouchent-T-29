@@ -46,3 +46,11 @@ def root():
 
 # Serve React frontend
 app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
+
+from session_scheduler import start_scheduler, stop_scheduler
+
+@app.on_event("startup")
+def startup(): start_scheduler()
+
+@app.on_event("shutdown")
+def shutdown(): stop_scheduler()

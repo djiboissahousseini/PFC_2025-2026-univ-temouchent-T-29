@@ -6,13 +6,15 @@ from backend.models import Student, Attendance
 import shutil
 import os
 import numpy as np
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/face", tags=["Face Recognition"])
 
 SIMILARITY_THRESHOLD = 0.6
 
+
 # ─────────────────────────────────────────────
-# Helper: save uploaded file temporarily
+# Helpers
 # ─────────────────────────────────────────────
 def save_temp_file(file: UploadFile, folder: str = "backend/faces") -> str:
     os.makedirs(folder, exist_ok=True)
@@ -21,22 +23,16 @@ def save_temp_file(file: UploadFile, folder: str = "backend/faces") -> str:
         shutil.copyfileobj(file.file, buffer)
     return temp_path
 
-# ─────────────────────────────────────────────
-# Helper: get embedding from image path
-# ─────────────────────────────────────────────
+
 def get_embedding(img_path: str) -> np.ndarray:
     result = DeepFace.represent(img_path=img_path, model_name="Facenet")
     return np.array(result[0]["embedding"], dtype=np.float32)
 
-# ─────────────────────────────────────────────
-# Helper: cosine similarity
-# ─────────────────────────────────────────────
+
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-# ─────────────────────────────────────────────
-# Helper: find best matching student
-# ─────────────────────────────────────────────
+
 def find_best_match(students, uploaded_embedding: np.ndarray):
     best_match = None
     highest_similarity = -1
@@ -51,7 +47,6 @@ def find_best_match(students, uploaded_embedding: np.ndarray):
 
 # ─────────────────────────────────────────────
 # POST /face/register-student
-# Register a student's face into students table
 # ─────────────────────────────────────────────
 @router.post("/register-student")
 async def register_student_face(
@@ -59,7 +54,6 @@ async def register_student_face(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # 1️⃣ Check student exists
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -72,7 +66,6 @@ async def register_student_face(
     finally:
         os.remove(temp_path)
 
-    # 2️⃣ Save embedding to student
     student.face_embedding = embedding.tolist()
     db.commit()
 
@@ -81,7 +74,6 @@ async def register_student_face(
 
 # ─────────────────────────────────────────────
 # POST /face/identify
-# Identify a face against students table
 # ─────────────────────────────────────────────
 @router.post("/identify")
 async def identify_face(
@@ -112,15 +104,16 @@ async def identify_face(
 
 # ─────────────────────────────────────────────
 # POST /face/checkin
-# Identify face + log attendance in one step
+# Student scans face → classroom sent by tablet →
+# system finds the active session for that classroom
 # ─────────────────────────────────────────────
 @router.post("/checkin")
 async def face_checkin(
-    session_id: int = Form(...),
+    classroom: str = Form(...),     # tablet sends its own classroom constant
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Step 1: Generate embedding
+    # ── 1. Get embedding ──────────────────────────────────────
     temp_path = save_temp_file(file)
     try:
         uploaded_embedding = get_embedding(temp_path)
@@ -129,47 +122,75 @@ async def face_checkin(
     finally:
         os.remove(temp_path)
 
-    # Step 2: Find best matching student
+    # ── 2. Find best matching student ─────────────────────────
     students = db.query(Student).filter(Student.face_embedding != None).all()
     if not students:
         raise HTTPException(status_code=404, detail="No registered student faces found")
 
     best_match, highest_similarity = find_best_match(students, uploaded_embedding)
 
-    # Step 3: Check threshold
     if highest_similarity <= SIMILARITY_THRESHOLD:
         return {
             "status": "unknown",
             "match": False,
+            "similarity": round(highest_similarity, 4),
             "message": "❌ Face not recognized — attendance NOT logged"
         }
 
-    # Step 4: Check session is active
+    # ── 3. Find active session for this classroom ─────────────
     from backend.models import Session as SessionModel
     session = db.query(SessionModel).filter(
-        SessionModel.id == session_id,
+        SessionModel.classroom == classroom,
         SessionModel.is_active == True
     ).first()
-    if not session:
-        raise HTTPException(status_code=400, detail="Session not active or not found")
 
-    # Step 5: Prevent duplicate attendance
+    if not session:
+        return {
+            "status": "no_session",
+            "student": best_match.name,
+            "message": f"⚠️ No active session in classroom {classroom}"
+        }
+
+    # ── 4. Determine attendance status (present / late) ───────
+    now = datetime.now()
+    current_time = now.time()
+
+    # Get timetable slot to find start_time
+    from backend.models import Timetable
+    slot = db.query(Timetable).filter(
+        Timetable.classroom == classroom,
+        Timetable.course_name == session.course_name,
+        Timetable.group_name == session.group_name,
+        Timetable.day_of_week == now.weekday()
+    ).first()
+
+    attendance_status = "present"
+    if slot:
+        from datetime import timedelta, date
+        start_dt = datetime.combine(now.date(), slot.start_time)
+        minutes_late = (now - start_dt).total_seconds() / 60
+        if minutes_late > 15:
+            attendance_status = "late"
+
+    # ── 5. Prevent duplicate ──────────────────────────────────
     existing = db.query(Attendance).filter(
         Attendance.student_id == best_match.id,
-        Attendance.session_id == session_id
+        Attendance.session_id == session.id
     ).first()
     if existing:
         return {
             "status": "duplicate",
             "student": best_match.name,
-            "message": "⚠️ Already checked in for this session"
+            "similarity": round(highest_similarity, 4),
+            "message": f"⚠️ {best_match.name} already checked in for this session"
         }
 
-    # Step 6: Log attendance
+    # ── 6. Log attendance ─────────────────────────────────────
     new_attendance = Attendance(
         student_id=best_match.id,
-        session_id=session_id,
-        status="present"
+        session_id=session.id,
+        status=attendance_status,
+        timestamp=datetime.now(timezone.utc)
     )
     db.add(new_attendance)
     db.commit()
@@ -177,7 +198,10 @@ async def face_checkin(
     return {
         "status": "success",
         "student": best_match.name,
-        "similarity": round(float(highest_similarity), 4),
-        "session_id": session_id,
-        "message": f"✅ Attendance logged for {best_match.name}"
+        "similarity": round(highest_similarity, 4),
+        "attendance_status": attendance_status,
+        "session_id": session.id,
+        "course": session.course_name,
+        "group": session.group_name,
+        "message": f"✅ {best_match.name} marked as {attendance_status}"
     }
