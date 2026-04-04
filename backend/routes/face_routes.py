@@ -113,7 +113,7 @@ async def face_checkin(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # ── 1. Get embedding ──────────────────────────────────────
+    #1. Get embedding
     temp_path = save_temp_file(file)
     try:
         uploaded_embedding = get_embedding(temp_path)
@@ -121,13 +121,13 @@ async def face_checkin(
         raise HTTPException(status_code=500, detail=f"Face detection failed: {str(e)}")
     finally:
         os.remove(temp_path)
-
-    # ── 2. Find best matching student ─────────────────────────
+    #2. Find best matching student
     students = db.query(Student).filter(Student.face_embedding != None).all()
     if not students:
         raise HTTPException(status_code=404, detail="No registered student faces found")
 
     best_match, highest_similarity = find_best_match(students, uploaded_embedding)
+    print(f"[DEBUG] Best match: {best_match.name}, similarity: {highest_similarity}")
 
     if highest_similarity <= SIMILARITY_THRESHOLD:
         return {
@@ -137,7 +137,7 @@ async def face_checkin(
             "message": "❌ Face not recognized — attendance NOT logged"
         }
 
-    # ── 3. Find active session for this classroom ─────────────
+    #3. Find active session for this classroom
     from backend.models import Session as SessionModel
     session = db.query(SessionModel).filter(
         SessionModel.classroom == classroom,
@@ -151,7 +151,7 @@ async def face_checkin(
             "message": f"⚠️ No active session in classroom {classroom}"
         }
 
-    # ── 4. Determine attendance status (present / late) ───────
+    #4. Determine attendance status (present / late)
     now = datetime.now()
     current_time = now.time()
 
@@ -172,12 +172,54 @@ async def face_checkin(
         if minutes_late > 15:
             attendance_status = "late"
 
-    # ── 5. Prevent duplicate ──────────────────────────────────
+    # # ── 5. Prevent duplicate ──────────────────────────────────
+    # existing = db.query(Attendance).filter(
+    #     Attendance.student_id == best_match.id,
+    #     Attendance.session_id == session.id
+    # ).first()
+    # if existing:
+    #     return {
+    #         "status": "duplicate",
+    #         "student": best_match.name,
+    #         "similarity": round(highest_similarity, 4),
+    #         "message": f"⚠️ {best_match.name} already checked in for this session"
+    #     }
+
+    # # ── 6. Log attendance ─────────────────────────────────────
+    # new_attendance = Attendance(
+    #     student_id=best_match.id,
+    #     session_id=session.id,
+    #     status=attendance_status,
+    #     timestamp=datetime.now(timezone.utc)
+    # )
+    # db.add(new_attendance)
+    # db.commit()
+
+    # return {
+    #     "status": "success",
+    #     "student": best_match.name,
+    #     "similarity": round(highest_similarity, 4),
+    #     "attendance_status": attendance_status,
+    #     "session_id": session.id,
+    #     "course": session.course_name,
+    #     "group": session.group_name,
+    #     "message": f"✅ {best_match.name} marked as {attendance_status}"
+    # }
+    # 5. Check if student belongs to this session's group
     existing = db.query(Attendance).filter(
         Attendance.student_id == best_match.id,
         Attendance.session_id == session.id
     ).first()
-    if existing:
+
+    if not existing:
+        return {
+            "status": "wrong_group",
+            "student": best_match.name,
+            "similarity": round(highest_similarity, 4),
+            "message": f"⚠️ {best_match.name} is not in group {session.group_name}"
+        }
+
+    if existing.status != "absent":
         return {
             "status": "duplicate",
             "student": best_match.name,
@@ -185,14 +227,9 @@ async def face_checkin(
             "message": f"⚠️ {best_match.name} already checked in for this session"
         }
 
-    # ── 6. Log attendance ─────────────────────────────────────
-    new_attendance = Attendance(
-        student_id=best_match.id,
-        session_id=session.id,
-        status=attendance_status,
-        timestamp=datetime.now(timezone.utc)
-    )
-    db.add(new_attendance)
+    #6. Update absent → present / late
+    existing.status = attendance_status
+    existing.timestamp = datetime.now(timezone.utc)
     db.commit()
 
     return {

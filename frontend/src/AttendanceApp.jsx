@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 const SERVER_IP = "";
-const CLASSROOM = "A7"; // ← change this per tablet
+const CLASSROOM = "A7"; //per tablet
 
 // ── App modes ─────────────────────────────────────────────
 // WAITING   : no session active, waiting for teacher to scan
@@ -110,25 +110,30 @@ export default function App() {
   const { videoRef, startCamera, stopCamera } = useCamera();
   const autoRef   = useRef(null);
   const resetRef  = useRef(null);
-  const pollRef   = useRef(null);
 
   // ── Check if a session is already active for this classroom ──
   const checkSession = useCallback(async () => {
     try {
-      const res = await fetch(`${SERVER_IP}/attendance/active-session?classroom=${encodeURIComponent(CLASSROOM)}`);
+      const res = await fetch(`${SERVER_IP}/attendance/active-session?classroom=${encodeURIComponent(CLASSROOM)}`,
+  { headers: { "ngrok-skip-browser-warning": "true" } });
       if (res.ok) {
         const data = await res.json();
+        if (data.session_id) {         
         setActiveSession(data);
-        setMode(MODE.STUDENT);    // session exists → student checkin mode
+        setMode(MODE.STUDENT);
       } else {
         setActiveSession(null);
-        setMode(MODE.WAITING);    // no session → wait for tap to unlock speech first
+        setMode(MODE.WAITING);
       }
-    } catch {
+    } else {
       setActiveSession(null);
       setMode(MODE.WAITING);
     }
-  }, []);
+  } catch {
+    setActiveSession(null);
+    setMode(MODE.WAITING);
+  }
+}, []);
 
   // Called when teacher taps the waiting screen — unlocks speech then starts scan
   const handleUnlock = useCallback(() => {
@@ -141,6 +146,12 @@ export default function App() {
   useEffect(() => {
     checkSession();
   }, [checkSession]);
+
+  useEffect(() => {
+  if (mode !== MODE.WAITING) return;
+  const interval = setInterval(checkSession, 5000);
+  return () => clearInterval(interval);
+ }, [mode, checkSession]);
 
   // ── Capture blob from video ──
   const captureBlob = useCallback(() => new Promise((resolve) => {
@@ -164,7 +175,11 @@ export default function App() {
     form.append("file", blob, "capture.jpg");
     form.append("classroom", CLASSROOM);
     try {
-      const res  = await fetch(`${SERVER_IP}/teacher/face-login`, { method: "POST", body: form });
+    const res = await fetch(`${SERVER_IP}/teacher/face-login`, {
+      method: "POST",
+      body: form,
+      headers: { "ngrok-skip-browser-warning": "true" }
+    });  
       const data = await res.json();
       setScanResult({ type: "teacher", ...data });
       setMode(MODE.T_RESULT);
@@ -208,8 +223,12 @@ export default function App() {
     const form = new FormData();
     form.append("file", blob, "capture.jpg");
     form.append("classroom", CLASSROOM);
-    try {
-      const res  = await fetch(`${SERVER_IP}/face/checkin`, { method: "POST", body: form });
+    try { 
+    const res = await fetch(`${SERVER_IP}/face/checkin`, {
+      method: "POST",
+      body: form,
+      headers: { "ngrok-skip-browser-warning": "true" }
+      });
       const data = await res.json();
       setScanResult({ type: "student", ...data });
       setMode(MODE.S_RESULT);
@@ -223,6 +242,8 @@ export default function App() {
         }
       } else if (data.status === "duplicate") {
         speak(`${data.student}, vous êtes déjà enregistré`);
+      } else if (data.status === "wrong_group") {
+        speak(`${data.student}, vous n'êtes pas dans ce groupe`);
       } else if (data.status === "no_session") {
         speak("Aucune session active");
       } else {
@@ -415,6 +436,7 @@ function ResultScreen({ result }) {
   const title = isSuccess
     ? (isTeacher ? "SESSION STARTED" : "WELCOME")
     : isDuplicate ? "ALREADY IN"
+    : result.status === "wrong_group" ? "WRONG GROUP"
     : isNoSession ? "NO SESSION"
     : isTeacher   ? "NOT RECOGNIZED"
     : "UNKNOWN FACE";

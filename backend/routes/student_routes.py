@@ -33,3 +33,29 @@ def add_student(request: StudentCreateRequest, db: Session = Depends(database.ge
         "name": student.name,
         "matricule": student.matricule
     }
+from pydantic import BaseModel
+from typing import List
+
+class StudentCreate(BaseModel):
+    name: str
+    matricule: str
+
+@router.post("/add_students_bulk")
+def add_students_bulk(students: List[StudentCreate], db: Session = Depends(database.get_db)):
+
+    created = []
+
+    for student in students:
+        new_student = models.Student(
+            name=student.name,
+            matricule=student.matricule
+        )
+        db.add(new_student)
+        created.append(student.name)
+
+    db.commit()
+
+    return {
+        "message": "Students added successfully",
+        "students": created
+    }

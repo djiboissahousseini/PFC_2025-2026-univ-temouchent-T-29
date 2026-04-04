@@ -17,6 +17,15 @@ from backend.routes.reset_routes import router as reset_router
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="Face Recognition Attendance System")
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # CORS
 app.add_middleware(

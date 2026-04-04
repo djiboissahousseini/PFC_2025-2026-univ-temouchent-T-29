@@ -108,7 +108,7 @@ async def teacher_face_login(
     file: UploadFile = File(...),
     db: Session = Depends(database.get_db)
 ):
-    # ── 1. Get embedding from uploaded photo ──────────────────
+    #1. Get embedding from uploaded photo
     temp_path = f"temp_teacher_{file.filename}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -123,7 +123,7 @@ async def teacher_face_login(
     finally:
         os.remove(temp_path)
 
-    # ── 2. Match against all registered teachers ──────────────
+    #2. Match against all registered teachers
     teachers = db.query(models.Teacher).filter(
         models.Teacher.face_embedding != None
     ).all()
@@ -144,12 +144,12 @@ async def teacher_face_login(
     if highest_similarity <= 0.7:
         raise HTTPException(status_code=401, detail="❌ Teacher not recognized")
 
-    # ── 3. Get current day and time ───────────────────────────
+    #3. Get current day and time
     now = datetime.now()
-    current_day = now.weekday()   # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat
+    current_day = now.weekday()  
     current_time = now.time()
 
-    # ── 4. Query timetable: teacher + classroom + day + time window ──
+    #4. Query timetable: teacher + classroom + day + time window
     # Session can only start at or after start_time, and before end_time
     slot = db.query(models.Timetable).filter(
         models.Timetable.teacher_name == best_match.name,
@@ -165,13 +165,12 @@ async def teacher_face_login(
             detail=f"❌ No active timetable slot for {best_match.name} in {classroom} right now. Check the time or classroom."
         )
 
-    # ── 5. Prevent duplicate active session ───────────────────
+    #5. Prevent duplicate active session 
     existing_session = db.query(models.Session).filter(
         models.Session.teacher_id == best_match.id,
         models.Session.is_active == True
     ).first()
     if existing_session:
-        # Return existing session info instead of erroring
         return {
             "status": "already_active",
             "teacher": best_match.name,
@@ -182,7 +181,7 @@ async def teacher_face_login(
             "message": f"⚠️ Session already active for {best_match.name}"
         }
 
-    # ── 6. Create session from timetable slot ─────────────────
+    #6. Create session from timetable slot
     new_session = models.Session(
         teacher_id=best_match.id,
         course_name=slot.course_name,
@@ -192,9 +191,25 @@ async def teacher_face_login(
         is_active=True
     )
     db.add(new_session)
-    db.commit()
-    db.refresh(new_session)
+    db.flush()
 
+    from backend.models import Attendance
+    students = db.query(models.Student).filter(
+    models.Student.group_name == slot.group_name
+    ).all()
+    print(f"[DEBUG] slot.group_name: {slot.group_name}")
+    print(f"[DEBUG] students found: {len(students)}")
+    for student in students:
+        absent_record = Attendance(
+        student_id=student.id,
+        session_id=new_session.id,
+        status="absent",
+        timestamp=None  
+        )
+        db.add(absent_record)
+       
+
+    db.commit()
     return {
         "status": "success",
         "teacher": best_match.name,
