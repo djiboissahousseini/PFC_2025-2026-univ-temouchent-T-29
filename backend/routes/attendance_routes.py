@@ -111,4 +111,3 @@ def get_session_attendance(session_id: int, db: Session = Depends(database.get_d
         }
         for r in records
     ]
- 
