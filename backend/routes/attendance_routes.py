@@ -111,3 +111,63 @@ def get_session_attendance(session_id: int, db: Session = Depends(database.get_d
         }
         for r in records
     ]
+# GET /attendance/absences/{student_id} — absence count per course for one student
+@router.get("/absences/{student_id}")
+def get_student_absences(student_id: int, db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    from backend.models import Session as SessionModel
+
+    results = db.query(
+        SessionModel.course_name,
+        func.count(Attendance.id).label("absence_count")
+    ).join(
+        Attendance, Attendance.session_id == SessionModel.id
+    ).filter(
+        Attendance.student_id == student_id,
+        Attendance.status == "absent"
+    ).group_by(SessionModel.course_name).all()
+
+    return [
+        {"course_name": r.course_name, "absence_count": r.absence_count}
+        for r in results
+    ]
+
+
+# GET /attendance/absences — absence count for all students
+@router.get("/absences")
+def get_all_absences(db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    from backend.models import Session as SessionModel
+
+    results = db.query(
+        Student.id,
+        Student.name,
+        Student.matricule,
+        Student.group_name,
+        SessionModel.course_name,
+        func.count(Attendance.id).label("absence_count")
+    ).join(
+        Attendance, Attendance.student_id == Student.id
+    ).join(
+        SessionModel, SessionModel.id == Attendance.session_id
+    ).filter(
+        Attendance.status == "absent"
+    ).group_by(
+        Student.id, Student.name, Student.matricule,
+        Student.group_name, SessionModel.course_name
+    ).order_by(
+        func.count(Attendance.id).desc()
+    ).all()
+
+    return [
+        {
+            "student_id": r.id,
+            "student_name": r.name,
+            "matricule": r.matricule,
+            "group_name": r.group_name,
+            "course_name": r.course_name,
+            "absence_count": r.absence_count,
+            "warning": "exclusion" if r.absence_count >= 5 else "at_risk" if r.absence_count >= 3 else None
+        }
+        for r in results
+    ]
