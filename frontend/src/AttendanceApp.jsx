@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
-const SERVER_IP = "";
+const SERVER_IP = "http://localhost:8000";
 const CLASSROOM = "A7"; //per tablet
 
 // ── App modes ─────────────────────────────────────────────

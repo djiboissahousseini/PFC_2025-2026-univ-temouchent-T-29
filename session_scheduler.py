@@ -7,20 +7,18 @@ scheduler = BackgroundScheduler()
 
 
 def auto_close_expired_sessions():
-    """Close sessions where timetable end_time has passed."""
+    """Close sessions where timetable end_time has passed or no slot exists for today."""
     db = SessionLocal()
     try:
         now = datetime.now()
         current_time = now.time()
-        current_day = now.weekday()  # 0=Mon … 5=Sat
+        current_day = now.weekday()
 
-        # Get all active sessions
         active_sessions = db.query(models.Session).filter(
             models.Session.is_active == True
         ).all()
 
         for session in active_sessions:
-            # Find matching timetable slot
             slot = db.query(models.Timetable).filter(
                 models.Timetable.course_name == session.course_name,
                 models.Timetable.group_name == session.group_name,
@@ -28,10 +26,12 @@ def auto_close_expired_sessions():
                 models.Timetable.day_of_week == current_day,
             ).first()
 
-            if slot and current_time >= slot.end_time:
+            if not slot:
                 session.is_active = False
-                print(f"[Scheduler] Auto-closed session {session.id} "
-                      f"({session.course_name} / {session.group_name} / {session.classroom})")
+                print(f"[Scheduler] Closed session with no slot today: {session.course_name}")
+            elif current_time >= slot.end_time:
+                session.is_active = False
+                print(f"[Scheduler] Auto-closed expired session: {session.course_name}")
 
         db.commit()
 
@@ -40,7 +40,6 @@ def auto_close_expired_sessions():
         db.rollback()
     finally:
         db.close()
-
 
 def start_scheduler():
     scheduler.add_job(auto_close_expired_sessions, "interval", seconds=60, id="session_closer")

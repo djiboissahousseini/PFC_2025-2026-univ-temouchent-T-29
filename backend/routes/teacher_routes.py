@@ -155,8 +155,8 @@ async def teacher_face_login(
         models.Timetable.teacher_name == best_match.name,
         models.Timetable.classroom == classroom,
         models.Timetable.day_of_week == current_day,
-        # models.Timetable.start_time <= current_time,
-        # models.Timetable.end_time > current_time
+        models.Timetable.start_time <= current_time,
+        models.Timetable.end_time > current_time
     ).first() 
 
     if not slot:

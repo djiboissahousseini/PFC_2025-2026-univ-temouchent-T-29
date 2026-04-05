@@ -1,3 +1,16 @@
+import logging
+import re
+
+class MaskIPFilter(logging.Filter):
+    def filter(self, record):
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                re.sub(r'\d+\.\d+\.\d+\.\d+', 'X.X.X.X', str(a)) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
+
+logging.getLogger("uvicorn.access").addFilter(MaskIPFilter())
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -56,10 +69,13 @@ def root():
 # Serve React frontend
 app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
 
-from session_scheduler import start_scheduler, stop_scheduler
+from session_scheduler import start_scheduler, stop_scheduler, auto_close_expired_sessions
 
 @app.on_event("startup")
-def startup(): start_scheduler()
+def startup(): 
+    auto_close_expired_sessions() 
+    start_scheduler()
 
 @app.on_event("shutdown")
-def shutdown(): stop_scheduler()
+def shutdown(): 
+    stop_scheduler()
