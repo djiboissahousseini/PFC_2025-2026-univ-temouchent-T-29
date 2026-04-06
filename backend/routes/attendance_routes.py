@@ -113,7 +113,7 @@ def get_session_attendance(session_id: int, db: Session = Depends(database.get_d
     ]
 # GET /attendance/absences/{student_id} — absence count per course for one student
 @router.get("/absences/{student_id}")
-def get_student_absences(student_id: int, db: Session = Depends(get_db)):
+def get_student_absences(student_id: int, db: Session = Depends(database.get_db)):
     from sqlalchemy import func
     from backend.models import Session as SessionModel
 
@@ -135,7 +135,7 @@ def get_student_absences(student_id: int, db: Session = Depends(get_db)):
 
 # GET /attendance/absences — absence count for all students
 @router.get("/absences")
-def get_all_absences(db: Session = Depends(get_db)):
+def get_all_absences(db: Session = Depends(database.get_db)):
     from sqlalchemy import func
     from backend.models import Session as SessionModel
 
